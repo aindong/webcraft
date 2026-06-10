@@ -12,6 +12,8 @@ export interface Cost {
 export interface UnitDef {
   id: string;
   name: string;
+  /** one-line tooltip description shown in the HUD */
+  desc: string;
   cost: Cost;
   food: number;
   hp: number;
@@ -51,6 +53,8 @@ export interface BuildingLevelDef {
 export interface BuildingDef {
   id: string;
   name: string;
+  /** one-line tooltip description shown in the HUD */
+  desc: string;
   cost: Cost;
   /** footprint in tiles */
   size: number;
@@ -98,24 +102,28 @@ export const UNITS: Record<string, UnitDef> = {
   // ----- Human -----
   peasant: {
     id: 'peasant', name: 'Peasant',
+    desc: 'Gathers gold and lumber and constructs buildings. Keeps chopping nearby forests until told otherwise.',
     cost: { gold: 75, wood: 0 }, food: 1,
     hp: 40, speed: 2.2, damage: 4, range: 1.2, attackPeriod: 1.6,
     aggroRange: 0, trainTime: 12, sight: 5, isWorker: true, requiresLevel: 1, scale: 0.85,
   },
   footman: {
     id: 'footman', name: 'Footman',
+    desc: 'Sturdy front-line melee soldier — the backbone of any army.',
     cost: { gold: 135, wood: 0 }, food: 2,
     hp: 90, speed: 2.4, damage: 9, range: 1.2, attackPeriod: 1.2,
     aggroRange: 5, trainTime: 18, sight: 6, isWorker: false, requiresLevel: 1, scale: 1,
   },
   archer: {
     id: 'archer', name: 'Archer',
+    desc: 'Fragile ranged attacker. Deadly behind a line of footmen.',
     cost: { gold: 110, wood: 50 }, food: 2,
     hp: 55, speed: 2.5, damage: 11, range: 5, attackPeriod: 1.5,
     aggroRange: 6, trainTime: 20, sight: 7, isWorker: false, requiresLevel: 2, scale: 0.95,
   },
   knight: {
     id: 'knight', name: 'Knight',
+    desc: 'Fast, heavily armored cavalry that excels at breaking enemy lines.',
     cost: { gold: 220, wood: 40 }, food: 3,
     hp: 160, speed: 3.2, damage: 16, range: 1.3, attackPeriod: 1.3,
     aggroRange: 5, trainTime: 28, sight: 6, isWorker: false, requiresLevel: 3, scale: 1.15,
@@ -124,24 +132,28 @@ export const UNITS: Record<string, UnitDef> = {
   // ----- Orc -----
   peon: {
     id: 'peon', name: 'Peon',
+    desc: 'Gathers gold and lumber and builds structures. Works until the work is done.',
     cost: { gold: 75, wood: 0 }, food: 1,
     hp: 45, speed: 2.1, damage: 5, range: 1.2, attackPeriod: 1.7,
     aggroRange: 0, trainTime: 12, sight: 5, isWorker: true, requiresLevel: 1, scale: 0.9,
   },
   grunt: {
     id: 'grunt', name: 'Grunt',
+    desc: 'Tough melee bruiser. Hits hard and soaks damage.',
     cost: { gold: 140, wood: 0 }, food: 2,
     hp: 100, speed: 2.3, damage: 10, range: 1.2, attackPeriod: 1.3,
     aggroRange: 5, trainTime: 18, sight: 6, isWorker: false, requiresLevel: 1, scale: 1.05,
   },
   spearthrower: {
     id: 'spearthrower', name: 'Spear Thrower',
+    desc: 'Ranged hunter who skewers foes from afar but falls quickly in melee.',
     cost: { gold: 115, wood: 45 }, food: 2,
     hp: 60, speed: 2.4, damage: 12, range: 4.5, attackPeriod: 1.6,
     aggroRange: 6, trainTime: 20, sight: 7, isWorker: false, requiresLevel: 2, scale: 1,
   },
   raider: {
     id: 'raider', name: 'Raider',
+    desc: 'Swift wolf-riding shock troops, perfect for flanking and raids.',
     cost: { gold: 230, wood: 40 }, food: 3,
     hp: 150, speed: 3.4, damage: 17, range: 1.3, attackPeriod: 1.3,
     aggroRange: 5, trainTime: 28, sight: 6, isWorker: false, requiresLevel: 3, scale: 1.15,
@@ -158,6 +170,7 @@ export const BUILDINGS: Record<string, BuildingDef> = {
   // ----- Human -----
   townhall: {
     id: 'townhall', name: 'Town Hall',
+    desc: 'Seat of power: trains Peasants and receives gold and lumber. Upgrade to Keep and Castle for more food.',
     cost: { gold: 400, wood: 250 }, size: 3, buildTime: 60, sight: 8,
     isTownHall: true, trains: ['peasant'],
     levels: [
@@ -168,6 +181,7 @@ export const BUILDINGS: Record<string, BuildingDef> = {
   },
   house: {
     id: 'house', name: 'House',
+    desc: 'Raises your food cap so you can train more units. Upgrades to a Manor.',
     cost: { gold: 80, wood: 30 }, size: 2, buildTime: 18, sight: 4,
     isTownHall: false, trains: [],
     levels: [
@@ -177,6 +191,7 @@ export const BUILDINGS: Record<string, BuildingDef> = {
   },
   barracks: {
     id: 'barracks', name: 'Barracks',
+    desc: 'Trains your military. Upgrade it to unlock Archers (II) and Knights (III).',
     cost: { gold: 180, wood: 70 }, size: 3, buildTime: 35, sight: 5,
     isTownHall: false, trains: ['footman', 'archer', 'knight'],
     levels: [
@@ -187,6 +202,7 @@ export const BUILDINGS: Record<string, BuildingDef> = {
   },
   tower: {
     id: 'tower', name: 'Watch Tower',
+    desc: 'Defensive tower that automatically shoots nearby enemies.',
     cost: { gold: 120, wood: 80 }, size: 2, buildTime: 30, sight: 8,
     isTownHall: false, trains: [],
     levels: [
@@ -198,6 +214,7 @@ export const BUILDINGS: Record<string, BuildingDef> = {
   // ----- Orc -----
   greathall: {
     id: 'greathall', name: 'Great Hall',
+    desc: 'Heart of the camp: trains Peons and receives gold and lumber. Upgrade to Stronghold and Fortress for more food.',
     cost: { gold: 400, wood: 250 }, size: 3, buildTime: 60, sight: 8,
     isTownHall: true, trains: ['peon'],
     levels: [
@@ -208,6 +225,7 @@ export const BUILDINGS: Record<string, BuildingDef> = {
   },
   hut: {
     id: 'hut', name: 'Hut',
+    desc: 'Raises your food cap so you can train more units. Upgrades to a War Hut.',
     cost: { gold: 80, wood: 30 }, size: 2, buildTime: 18, sight: 4,
     isTownHall: false, trains: [],
     levels: [
@@ -217,6 +235,7 @@ export const BUILDINGS: Record<string, BuildingDef> = {
   },
   warcamp: {
     id: 'warcamp', name: 'War Camp',
+    desc: 'Trains your military. Upgrade it to unlock Spear Throwers (II) and Raiders (III).',
     cost: { gold: 180, wood: 70 }, size: 3, buildTime: 35, sight: 5,
     isTownHall: false, trains: ['grunt', 'spearthrower', 'raider'],
     levels: [
@@ -227,6 +246,7 @@ export const BUILDINGS: Record<string, BuildingDef> = {
   },
   spiketower: {
     id: 'spiketower', name: 'Spiked Tower',
+    desc: 'Defensive tower that automatically skewers nearby enemies.',
     cost: { gold: 120, wood: 80 }, size: 2, buildTime: 30, sight: 8,
     isTownHall: false, trains: [],
     levels: [

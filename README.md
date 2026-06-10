@@ -36,13 +36,16 @@ npm run build    # production build to dist/
   adding a third is a data change, not a code change.
 - **Economy** — peasants/peons mine gold from mines (they walk inside and
   emerge carrying a sack) and chop trees tile-by-tile until the forest
-  recedes. Resources are delivered to your town hall.
+  recedes. Resources are delivered to your town hall. Lumberjacks find the
+  next tree on their own — even when a whole grove runs out — and builders
+  walk to your next unfinished blueprint when theirs completes.
 - **Building & upgrading** — houses raise your food cap (House → Manor),
   barracks unlock stronger units as they level (Barracks II unlocks Archers,
   III unlocks Knights), town halls upgrade to Keep → Castle, and watch
   towers shoot at attackers.
 - **Training** — production queues with progress bars, cancel-refunds, and
-  rally points (right-click with a building selected).
+  rally points (right-click with a building selected). Every command-card
+  button shows a tooltip with full stats, costs, and what an upgrade unlocks.
 - **Combat** — attack-move (A + click), auto-aggro, worker retaliation,
   ranged and melee units, "under attack!" alerts.
 - **Fog of war** — unexplored darkness, explored-but-dim memory, live vision.

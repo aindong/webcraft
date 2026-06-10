@@ -3,7 +3,7 @@
  * and transient alerts. The HUD never mutates the sim — it calls back into
  * the Game which enqueues commands.
  */
-import { buildingDef, raceDef, unitDef, UNITS } from '../sim/data';
+import { BuildingDef, buildingDef, Cost, raceDef, UnitDef, unitDef, UNITS } from '../sim/data';
 import { foodCap, foodUsed } from '../sim/commands';
 import { Entity, GameState } from '../sim/state';
 
@@ -74,13 +74,25 @@ const CSS = `
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-size: 20px; border-radius: 4px; padding: 2px; position: relative;
 }
-.cmd-btn:hover:not(:disabled) { background: #4a3f28; border-color: #ffd84d; }
-.cmd-btn:disabled { opacity: 0.35; cursor: default; }
+.cmd-btn:hover:not(.disabled) { background: #4a3f28; border-color: #ffd84d; }
+.cmd-btn.disabled { opacity: 0.35; cursor: default; }
 .cmd-btn .lbl { font-size: 9px; line-height: 1; margin-top: 2px; color: #cfc4a8; }
 .cmd-btn .cost { font-size: 8px; color: #ffd84d; line-height: 1; }
 .cmd-btn .badge {
   position: absolute; top: 1px; right: 3px; font-size: 9px; color: #9ad09a; font-weight: 700;
 }
+#cmd-tip {
+  position: absolute; right: 10px; bottom: 178px; width: 300px;
+  background: #14120ef2; border: 1px solid #5a4f33; border-radius: 6px;
+  padding: 10px 12px; font-size: 12.5px; line-height: 1.5; pointer-events: none;
+  display: none; box-shadow: 0 4px 16px #000a;
+}
+#cmd-tip h4 { margin: 0 0 4px; color: #ffd84d; font-size: 14px; }
+#cmd-tip .tip-cost { color: #ffd84d; margin: 2px 0; }
+#cmd-tip .tip-stats { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 4px 0; color: #cfc4a8; }
+#cmd-tip .tip-desc { color: #b0a888; }
+#cmd-tip .tip-lock { color: #ff9a8a; margin-top: 4px; }
+#cmd-tip .tip-plus { color: #9ad09a; }
 #alerts {
   position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none;
@@ -111,6 +123,63 @@ const BUILDING_ICONS: Record<string, string> = {
   greathall: '🛖', hut: '⛺', warcamp: '🪖', spiketower: '💀',
 };
 
+// --- tooltip content -------------------------------------------------------
+
+function costText(c: Cost, food = 0): string {
+  const parts: string[] = [];
+  if (c.gold) parts.push(`🪙 ${c.gold}`);
+  if (c.wood) parts.push(`🪵 ${c.wood}`);
+  if (food) parts.push(`🍖 ${food} food`);
+  return parts.length ? parts.join(' · ') : 'Free';
+}
+
+function unitTip(u: UnitDef, lockedAt?: string): string {
+  return `
+    <h4>${UNIT_ICONS[u.id] ?? '🧍'} ${u.name}</h4>
+    <div class="tip-cost">${costText(u.cost, u.food)} · ⏱ ${u.trainTime}s</div>
+    <div class="tip-stats">
+      <span>❤️ ${u.hp} HP</span>
+      <span>⚔️ ${u.damage} dmg</span>
+      <span>${u.range >= 2 ? `🎯 range ${u.range}` : '🤜 melee'}</span>
+      <span>👟 speed ${u.speed}</span>
+    </div>
+    <div class="tip-desc">${u.desc}</div>
+    ${lockedAt ? `<div class="tip-lock">🔒 Requires ${lockedAt}</div>` : ''}
+  `;
+}
+
+function buildingTip(def: BuildingDef): string {
+  const lvl = def.levels[0];
+  const stats: string[] = [`❤️ ${lvl.hp} HP`];
+  if (lvl.providesFood > 0) stats.push(`🍖 +${lvl.providesFood} food`);
+  if (lvl.damage > 0) stats.push(`⚔️ ${lvl.damage} dmg`, `🎯 range ${lvl.range}`);
+  if (def.trains.length > 0) stats.push(`🎓 trains ${def.trains.map((t) => UNITS[t].name).join(', ')}`);
+  return `
+    <h4>${BUILDING_ICONS[def.id] ?? '🏠'} ${def.name}</h4>
+    <div class="tip-cost">${costText(def.cost)} · ⏱ ${def.buildTime}s</div>
+    <div class="tip-stats">${stats.map((s) => `<span>${s}</span>`).join('')}</div>
+    <div class="tip-desc">${def.desc}</div>
+  `;
+}
+
+function upgradeTip(def: BuildingDef, b: Entity): string {
+  const cur = def.levels[b.level - 1];
+  const next = def.levels[b.level];
+  const gains: string[] = [`❤️ ${cur.hp} → ${next.hp} HP`];
+  if (next.providesFood !== cur.providesFood) gains.push(`🍖 ${cur.providesFood} → ${next.providesFood} food`);
+  if (next.damage !== cur.damage) gains.push(`⚔️ ${cur.damage} → ${next.damage} dmg`);
+  const unlocks = def.trains
+    .filter((t) => UNITS[t].requiresLevel === b.level + 1)
+    .map((t) => `${UNIT_ICONS[t] ?? ''} ${UNITS[t].name}`);
+  return `
+    <h4>⬆️ Upgrade to ${next.name}</h4>
+    <div class="tip-cost">${costText(next.cost)} · ⏱ ${next.upgradeTime}s</div>
+    <div class="tip-stats">${gains.map((s) => `<span class="tip-plus">${s}</span>`).join('')}</div>
+    ${unlocks.length ? `<div class="tip-desc">Unlocks training: <b>${unlocks.join(', ')}</b></div>` : ''}
+    <div class="tip-desc">Training pauses while the upgrade is in progress.</div>
+  `;
+}
+
 export class Hud {
   root: HTMLElement;
   minimapCanvas: HTMLCanvasElement;
@@ -123,6 +192,9 @@ export class Hud {
   private helpOverlay!: HTMLElement;
   private sfxBtn!: HTMLButtonElement;
   private voiceBtn!: HTMLButtonElement;
+  private tip!: HTMLElement;
+  /** key of the command button currently showing a tooltip ('' = none) */
+  private tipKey = '';
   /** signature of last rendered selection panel, to avoid DOM churn */
   private lastPanelSig = '';
 
@@ -146,6 +218,7 @@ export class Hud {
         <button class="hud-btn" id="btn-quit">Surrender</button>
       </div>
       <div id="alerts"></div>
+      <div id="cmd-tip"></div>
       <div id="help-overlay">
         <h3>Commands</h3>
         <div><kbd>Left-click</kbd> / drag — select units</div>
@@ -173,6 +246,7 @@ export class Hud {
     this.alerts = this.root.querySelector('#alerts')!;
     this.helpOverlay = this.root.querySelector('#help-overlay')!;
     this.minimapCanvas = this.root.querySelector('#minimap-wrap canvas')!;
+    this.tip = this.root.querySelector('#cmd-tip')!;
     this.sfxBtn = this.root.querySelector('#btn-sfx')!;
     this.voiceBtn = this.root.querySelector('#btn-voice')!;
 
@@ -244,13 +318,42 @@ export class Hud {
     this.selPanel.innerHTML = '';
     this.cmdCard.innerHTML = '';
 
-    if (entities.length === 0) return;
-
     if (entities.length === 1) {
       this.renderSingle(state, localPlayer, entities[0]);
-    } else {
+    } else if (entities.length > 1) {
       this.renderMulti(state, localPlayer, entities);
     }
+    this.refreshTip();
+  }
+
+  private showTip(key: string, html: string): void {
+    this.tipKey = key;
+    this.tip.innerHTML = html;
+    this.tip.style.display = 'block';
+  }
+
+  private hideTip(key: string): void {
+    if (this.tipKey !== key) return;
+    this.tipKey = '';
+    this.tip.style.display = 'none';
+  }
+
+  /**
+   * The command card is rebuilt whenever its signature changes (every
+   * resource tick, queue progress, …), which destroys the hovered button
+   * without firing mouseleave. Re-attach the tooltip to the same logical
+   * button if it still exists, otherwise hide it.
+   */
+  private refreshTip(): void {
+    if (!this.tipKey) return;
+    for (const btn of this.cmdCard.querySelectorAll<HTMLButtonElement>('.cmd-btn')) {
+      if (btn.dataset.tipkey === this.tipKey && btn.dataset.tip) {
+        this.tip.innerHTML = btn.dataset.tip;
+        return;
+      }
+    }
+    this.tipKey = '';
+    this.tip.style.display = 'none';
   }
 
   private renderSingle(state: GameState, localPlayer: number, e: Entity): void {
@@ -327,10 +430,12 @@ export class Hud {
   private cmdButton(
     icon: string, label: string, cost: { gold: number; wood: number } | null,
     enabled: boolean, onClick: () => void, badge = '',
+    tip: { key: string; html: string } | null = null,
   ): HTMLButtonElement {
     const btn = document.createElement('button');
-    btn.className = 'cmd-btn';
-    btn.disabled = !enabled;
+    // a CSS class instead of the disabled attribute: disabled buttons swallow
+    // mouse events, which would kill tooltips exactly where they matter most
+    btn.className = enabled ? 'cmd-btn' : 'cmd-btn disabled';
     btn.innerHTML = `
       ${badge ? `<span class="badge">${badge}</span>` : ''}
       <span>${icon}</span>
@@ -339,8 +444,14 @@ export class Hud {
     `;
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      onClick();
+      if (enabled) onClick();
     });
+    if (tip) {
+      btn.dataset.tipkey = tip.key;
+      btn.dataset.tip = tip.html;
+      btn.addEventListener('mouseenter', () => this.showTip(tip.key, tip.html));
+      btn.addEventListener('mouseleave', () => this.hideTip(tip.key));
+    }
     this.cmdCard.appendChild(btn);
     return btn;
   }
@@ -353,14 +464,22 @@ export class Hud {
       for (const bId of race.buildings) {
         const def = buildingDef(bId);
         const afford = p.gold >= def.cost.gold && p.wood >= def.cost.wood;
-        this.cmdButton(BUILDING_ICONS[bId] ?? '🏠', def.name, def.cost, afford, () => this.cb.onStartPlacement(bId));
+        this.cmdButton(BUILDING_ICONS[bId] ?? '🏠', def.name, def.cost, afford,
+          () => this.cb.onStartPlacement(bId), '',
+          { key: `build:${bId}`, html: buildingTip(def) });
       }
     }
     const military = units.some((u) => !unitDef(u.type)?.isWorker);
     if (military) {
-      this.cmdButton('🎯', 'Attack (A)', null, true, () => this.cb.onAttackMoveMode());
+      this.cmdButton('🎯', 'Attack (A)', null, true, () => this.cb.onAttackMoveMode(), '', {
+        key: 'attackmove',
+        html: '<h4>🎯 Attack-Move</h4><div class="tip-desc">Click a spot on the map: units march there and engage every enemy they meet on the way. Hotkey: <b>A</b> + click.</div>',
+      });
     }
-    this.cmdButton('✋', 'Stop (S)', null, true, () => this.cb.onStop());
+    this.cmdButton('✋', 'Stop (S)', null, true, () => this.cb.onStop(), '', {
+      key: 'stop',
+      html: '<h4>✋ Stop</h4><div class="tip-desc">Cancel the current order and hold position. Hotkey: <b>S</b>.</div>',
+    });
   }
 
   private renderBuildingCommands(state: GameState, localPlayer: number, b: Entity): void {
@@ -377,13 +496,15 @@ export class Hud {
           UNIT_ICONS[uId] ?? '🧍',
           locked ? `${u.name} (lv${u.requiresLevel})` : u.name,
           u.cost, !locked && afford,
-          () => this.cb.onTrain(b.id, uId),
+          () => this.cb.onTrain(b.id, uId), '',
+          { key: `train:${uId}`, html: unitTip(u, locked ? def.levels[u.requiresLevel - 1].name : undefined) },
         );
       }
       const next = def.levels[b.level];
       if (next) {
         const afford = p.gold >= next.cost.gold && p.wood >= next.cost.wood;
-        this.cmdButton('⬆️', `${next.name}`, next.cost, afford, () => this.cb.onUpgrade(b.id));
+        this.cmdButton('⬆️', `${next.name}`, next.cost, afford, () => this.cb.onUpgrade(b.id), '',
+          { key: 'upgrade', html: upgradeTip(def, b) });
       }
     }
 
@@ -392,7 +513,10 @@ export class Hud {
       const u = UNITS[item.unit];
       const pct = i === 0 ? `${Math.round((1 - item.remaining / item.total) * 100)}%` : '…';
       this.cmdButton(UNIT_ICONS[item.unit] ?? '🧍', `${u.name} ${pct}`, null, true,
-        () => this.cb.onCancelTrain(b.id, i), '✕');
+        () => this.cb.onCancelTrain(b.id, i), '✕', {
+          key: `queue:${i}`,
+          html: `<h4>${UNIT_ICONS[item.unit] ?? '🧍'} ${u.name} — in queue</h4><div class="tip-desc">Click to cancel and refund the full cost (${costText(u.cost)}).</div>`,
+        });
     });
   }
 }

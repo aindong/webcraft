@@ -356,8 +356,8 @@ function stepHarvest(state: GameState, events: EventBus, e: Entity): void {
   let { tx, ty } = e.order as { tx: number; ty: number };
   const map = state.map;
   if (map.trees[ty * map.width + tx] === 0) {
-    // tree gone: find an adjacent one
-    const next = nearestTree(state, tx, ty, 6);
+    // tree gone: find another — nearby first, then anywhere on the map
+    const next = findNextTree(state, e, tx, ty);
     if (!next) {
       e.order = { kind: 'idle' };
       return;
@@ -392,6 +392,16 @@ function stepHarvest(state: GameState, events: EventBus, e: Entity): void {
     repath(state, e, treeCenter.x, treeCenter.y);
     if (!e.path || e.path.length === 0) e.order = { kind: 'idle' };
   }
+}
+
+/**
+ * Next tree for a worker whose current tree is gone: prefer the grove around
+ * the old tile, but fall back to the nearest tree anywhere on the map so
+ * lumber lines keep running instead of going idle.
+ */
+function findNextTree(state: GameState, e: Entity, tx: number, ty: number): { x: number; y: number } | null {
+  return nearestTree(state, tx, ty, 6)
+    ?? nearestTree(state, Math.floor(e.x), Math.floor(e.y), Math.max(state.map.width, state.map.height));
 }
 
 function nearestTree(state: GameState, tx: number, ty: number, radius: number): { x: number; y: number } | null {
@@ -473,7 +483,7 @@ function stepDeliver(state: GameState, events: EventBus, e: Entity): void {
       const mine = state.entities.get(prev.target)!;
       repath(state, e, mine.x, mine.y, mine.id);
     } else if (prev.tx !== undefined && prev.ty !== undefined) {
-      const tree = nearestTree(state, prev.tx, prev.ty, 6);
+      const tree = findNextTree(state, e, prev.tx, prev.ty);
       if (tree) {
         e.order = { kind: 'harvest', tx: tree.x, ty: tree.y, gatherTicks: 0 };
         repath(state, e, tree.x + 0.5, tree.y + 0.5);
@@ -499,7 +509,7 @@ function stepBuild(state: GameState, events: EventBus, e: Entity): void {
   const def = unitDef(e.type);
   const site = e.order.target !== undefined ? state.entities.get(e.order.target) : undefined;
   if (!site || site.buildRemaining <= 0) {
-    e.order = { kind: 'idle' };
+    continueBuilding(state, e);
     return;
   }
   if (distanceTo(site, e) <= 0.8) {
@@ -514,13 +524,37 @@ function stepBuild(state: GameState, events: EventBus, e: Entity): void {
       site.buildRemaining = 0;
       site.hp = site.maxHp;
       events.emit({ kind: 'buildComplete', player: site.owner, entity: site.id, type: site.type });
-      e.order = { kind: 'idle' };
+      continueBuilding(state, e);
     }
     return;
   }
   if (!advanceAlongPath(state, e, def.speed)) {
     repath(state, e, site.x, site.y, site.id);
     if (!e.path || e.path.length === 0) e.order = { kind: 'idle' };
+  }
+}
+
+/**
+ * A builder whose site is done heads to the nearest remaining construction
+ * site instead of standing around — laid-out blueprints get finished without
+ * re-ordering workers one building at a time.
+ */
+function continueBuilding(state: GameState, e: Entity): void {
+  let best: Entity | null = null;
+  let bestD = Infinity;
+  for (const b of orderedEntities(state)) {
+    if (b.owner !== e.owner || !b.isBuilding || b.buildRemaining <= 0) continue;
+    const d = distanceTo(b, e);
+    if (d < bestD) {
+      bestD = d;
+      best = b;
+    }
+  }
+  if (best) {
+    e.order = { kind: 'build', target: best.id };
+    repath(state, e, best.x, best.y, best.id);
+  } else {
+    e.order = { kind: 'idle' };
   }
 }
 

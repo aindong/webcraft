@@ -6,7 +6,7 @@ import { createMatch, MatchConfig } from '../src/sim/mapgen';
 import { findPath } from '../src/sim/pathfinding';
 import { step } from '../src/sim/sim';
 import {
-  Entity, GameState, hashState, spawnUnit, T_WATER, TICKS_PER_SECOND,
+  Entity, GameState, hashState, spawnBuilding, spawnUnit, T_WATER, TICKS_PER_SECOND,
 } from '../src/sim/state';
 
 function testConfig(overrides: Partial<MatchConfig> = {}): MatchConfig {
@@ -199,6 +199,39 @@ describe('economy', () => {
     run(state, events, TICKS_PER_SECOND * 60, cmds);
     expect(state.players[0].wood).toBeGreaterThan(woodBefore);
   });
+
+  it('workers keep chopping distant trees after the local grove is gone', () => {
+    const { state, events } = createMatch(testConfig());
+    const map = state.map;
+    const w0 = workers(state, 0)[0];
+    const wx = Math.floor(w0.x), wy = Math.floor(w0.y);
+    // strip every tree, then plant a tiny near tree and a rich far one
+    map.trees.fill(0);
+    const findClear = (cx: number, cy: number): { x: number; y: number } => {
+      for (let r = 0; r < 10; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const x = cx + dx, y = cy + dy;
+            if (x < 1 || y < 1 || x >= map.width - 1 || y >= map.height - 1) continue;
+            const i = y * map.width + x;
+            if (map.terrain[i] !== T_WATER && map.occupied[i] === 0) return { x, y };
+          }
+        }
+      }
+      throw new Error('no clear tile');
+    };
+    const near = findClear(wx + 3, wy);
+    const far = findClear(wx + 14, wy + 14);
+    map.trees[near.y * map.width + near.x] = 2; // one chop and it's gone
+    map.trees[far.y * map.width + far.x] = 100; // > 6 tiles away: outside the local search
+    const cmds = new Map<number, Command[]>([
+      [0, [{ kind: 'harvest', player: 0, units: [w0.id], tx: near.x, ty: near.y } as Command]],
+    ]);
+    run(state, events, TICKS_PER_SECOND * 90, cmds);
+    // only by walking to the far tree can the worker bank a full 10-wood trip
+    expect(state.players[0].wood).toBeGreaterThanOrEqual(10);
+    expect(map.trees[far.y * map.width + far.x]).toBeLessThan(100);
+  });
 });
 
 describe('training & construction', () => {
@@ -255,6 +288,36 @@ describe('training & construction', () => {
     const evs = run(state, events, TICKS_PER_SECOND * 60, cmds);
     expect(evs.some((e) => e.kind === 'buildComplete')).toBe(true);
     expect(foodCap(state, 0)).toBe(capBefore + 4);
+  });
+
+  it('builders move on to the next construction site automatically', () => {
+    const { state, events } = createMatch(testConfig());
+    const ws = workers(state, 0);
+    const hall = findOwn(state, 0, (e) => e.type === 'townhall');
+    state.players[0].gold = 10000;
+    state.players[0].wood = 10000;
+    const spots: { x: number; y: number }[] = [];
+    outer: for (let r = 3; r < 14; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const x = Math.floor(hall.x) + dx, y = Math.floor(hall.y) + dy;
+          if (!canPlaceBuilding(state, 'house', x, y)) continue;
+          if (spots.some((s) => Math.abs(s.x - x) < 3 && Math.abs(s.y - y) < 3)) continue;
+          spots.push({ x, y });
+          if (spots.length === 2) break outer;
+        }
+      }
+    }
+    expect(spots).toHaveLength(2);
+    // workers are ordered to site 1 only; site 2 is a bare blueprint
+    const second = spawnBuilding(state, 0, 'house', spots[1].x, spots[1].y);
+    const cmds = new Map<number, Command[]>([
+      [0, [{ kind: 'build', player: 0, workers: ws.map((w) => w.id), building: 'house', tx: spots[0].x, ty: spots[0].y } as Command]],
+    ]);
+    const evs = run(state, events, TICKS_PER_SECOND * 120, cmds);
+    const completes = evs.filter((e) => e.kind === 'buildComplete');
+    expect(completes.length).toBe(2);
+    expect(second.buildRemaining).toBe(0);
   });
 
   it('upgrades a building to the next level', () => {
