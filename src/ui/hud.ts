@@ -3,7 +3,7 @@
  * and transient alerts. The HUD never mutates the sim — it calls back into
  * the Game which enqueues commands.
  */
-import { BuildingDef, buildingDef, Cost, raceDef, UnitDef, unitDef, UNITS } from '../sim/data';
+import { BuildingDef, buildingDef, BUILDINGS, Cost, raceDef, UnitDef, unitDef, UNITS } from '../sim/data';
 import { foodCap, foodUsed } from '../sim/commands';
 import { Entity, GameState } from '../sim/state';
 
@@ -291,21 +291,39 @@ export class Hud {
     (this.resFood.parentElement as HTMLElement).style.color = used >= cap ? '#ff8a7a' : '';
 
     this.updateSelectionPanel(state, localPlayer, selection);
+    this.updateDynamics(state);
   }
 
-  private panelSignature(state: GameState, selection: Set<number>): string {
+  /**
+   * Structural signature only: which buttons exist and whether they're
+   * enabled. Deliberately excludes HP, progress ticks, and raw resource
+   * counts — those change every tick and are patched in place by
+   * updateDynamics(). Rebuilding the card mid-hover makes buttons flicker
+   * and eats clicks.
+   */
+  private panelSignature(state: GameState, localPlayer: number, selection: Set<number>): string {
+    const p = state.players[localPlayer];
     const parts: string[] = [];
     for (const id of selection) {
       const e = state.entities.get(id);
       if (!e) continue;
-      parts.push(`${id}:${e.hp}:${e.level}:${e.buildRemaining}:${e.trainQueue.length}:${e.upgradeRemaining > 0 ? 1 : 0}:${e.trainQueue[0]?.remaining ?? ''}`);
+      let part = `${id}:${e.level}:${e.buildRemaining > 0 ? 1 : 0}:${e.upgradeRemaining > 0 ? 1 : 0}:${e.trainQueue.map((t) => t.unit).join(',')}`;
+      if (e.isBuilding && e.owner === localPlayer) {
+        const next = buildingDef(e.type)?.levels[e.level];
+        part += `:${next ? (p.gold >= next.cost.gold && p.wood >= next.cost.wood ? 1 : 0) : '-'}`;
+      }
+      parts.push(part);
     }
-    const p = state.players;
-    return parts.join('|') + `$${p.map((x) => `${x.gold},${x.wood}`).join(';')}`;
+    // afford bits flip enabled/disabled states on train & build buttons
+    const afford = [
+      ...Object.values(UNITS).map((u) => (p.gold >= u.cost.gold && p.wood >= u.cost.wood ? 1 : 0)),
+      ...Object.values(BUILDINGS).map((b) => (p.gold >= b.cost.gold && p.wood >= b.cost.wood ? 1 : 0)),
+    ].join('');
+    return parts.join('|') + '$' + afford;
   }
 
   private updateSelectionPanel(state: GameState, localPlayer: number, selection: Set<number>): void {
-    const sig = this.panelSignature(state, selection);
+    const sig = this.panelSignature(state, localPlayer, selection);
     if (sig === this.lastPanelSig) return;
     this.lastPanelSig = sig;
 
@@ -356,41 +374,74 @@ export class Hud {
     this.tip.style.display = 'none';
   }
 
+  /** The fast-changing one-liner under the entity name. */
+  private entitySub(e: Entity): string {
+    if (e.type === 'goldmine') return `Gold remaining: ${e.goldLeft}`;
+    if (e.isBuilding) {
+      const def = buildingDef(e.type);
+      if (e.buildRemaining > 0) return `Under construction — ${Math.round((1 - e.buildRemaining / e.buildTotal) * 100)}%`;
+      if (e.upgradeRemaining > 0) return `Upgrading — ${Math.round((1 - e.upgradeRemaining / e.upgradeTotal) * 100)}%`;
+      const food = def.levels[e.level - 1].providesFood;
+      return food > 0 ? `Provides ${food} food` : '';
+    }
+    const def = unitDef(e.type);
+    return def.isWorker
+      ? (e.carryAmount > 0 ? `Carrying ${e.carryAmount} ${e.carryType}` : 'Worker')
+      : `⚔ ${def.damage}  ·  range ${def.range >= 2 ? def.range : 'melee'}`;
+  }
+
+  /**
+   * Patch HP bars, progress text, and queue percentages in place every
+   * frame — without rebuilding the DOM, so hover and clicks are stable.
+   */
+  private updateDynamics(state: GameState): void {
+    for (const el of this.root.querySelectorAll<HTMLElement>('[data-hp-for]')) {
+      const e = state.entities.get(Number(el.dataset.hpFor));
+      if (!e) continue;
+      const ratio = Math.max(0, e.hp / e.maxHp);
+      el.style.width = `${Math.round(ratio * 100)}%`;
+      el.style.background = ratio > 0.66 ? '#5ad05a' : ratio > 0.33 ? '#e0c040' : '#e05040';
+    }
+    for (const el of this.root.querySelectorAll<HTMLElement>('[data-hptext-for]')) {
+      const e = state.entities.get(Number(el.dataset.hptextFor));
+      if (e) el.textContent = `${e.hp} / ${e.maxHp} HP`;
+    }
+    for (const el of this.root.querySelectorAll<HTMLElement>('[data-sub-for]')) {
+      const e = state.entities.get(Number(el.dataset.subFor));
+      if (!e) continue;
+      const sub = this.entitySub(e);
+      if (el.textContent !== sub) el.textContent = sub;
+    }
+    for (const btn of this.cmdCard.querySelectorAll<HTMLElement>('[data-queue-prog]')) {
+      const [bid, idx] = btn.dataset.queueProg!.split(':').map(Number);
+      const item = state.entities.get(bid)?.trainQueue[idx];
+      if (!item) continue;
+      const pct = idx === 0 ? `${Math.round((1 - item.remaining / item.total) * 100)}%` : '…';
+      const lbl = btn.querySelector('.lbl');
+      if (lbl) lbl.textContent = `${UNITS[item.unit].name} ${pct}`;
+    }
+  }
+
   private renderSingle(state: GameState, localPlayer: number, e: Entity): void {
     const card = document.createElement('div');
     card.className = 'sel-card';
-    let name: string, sub = '';
+    let name: string;
     let icon: string;
     if (e.type === 'goldmine') {
       name = 'Gold Mine';
       icon = '⛏️';
-      sub = `Gold remaining: ${e.goldLeft}`;
     } else if (e.isBuilding) {
-      const def = buildingDef(e.type);
-      name = def.levels[e.level - 1].name;
+      name = buildingDef(e.type).levels[e.level - 1].name;
       icon = BUILDING_ICONS[e.type] ?? '🏠';
-      if (e.buildRemaining > 0) {
-        sub = `Under construction — ${Math.round((1 - e.buildRemaining / e.buildTotal) * 100)}%`;
-      } else if (e.upgradeRemaining > 0) {
-        sub = `Upgrading — ${Math.round((1 - e.upgradeRemaining / e.upgradeTotal) * 100)}%`;
-      } else if (def.levels[e.level - 1].providesFood > 0) {
-        sub = `Provides ${def.levels[e.level - 1].providesFood} food`;
-      }
     } else {
-      const def = unitDef(e.type);
-      name = def.name;
+      name = unitDef(e.type).name;
       icon = UNIT_ICONS[e.type] ?? '🧍';
-      sub = def.isWorker
-        ? (e.carryAmount > 0 ? `Carrying ${e.carryAmount} ${e.carryType}` : 'Worker')
-        : `⚔ ${def.damage}  ·  range ${def.range >= 2 ? def.range : 'melee'}`;
     }
-    const ratio = e.hp / e.maxHp;
-    const hpColor = ratio > 0.66 ? '#5ad05a' : ratio > 0.33 ? '#e0c040' : '#e05040';
     card.innerHTML = `
       <div class="sel-name">${icon} ${name}</div>
-      <div class="sel-sub">${sub}</div>
-      <div class="sel-hpbar"><div style="width:${Math.round(ratio * 100)}%;background:${hpColor}"></div></div>
-      <div class="sel-sub">${e.hp} / ${e.maxHp} HP</div>
+      <div class="sel-sub" data-sub-for="${e.id}">${this.entitySub(e)}</div>
+      <div class="sel-hpbar"><div data-hp-for="${e.id}"></div></div>
+      <div class="sel-sub" data-hptext-for="${e.id}"></div>
     `;
     this.selPanel.appendChild(card);
 
@@ -409,9 +460,7 @@ export class Hud {
       chip.title = unitDef(e.type)?.name ?? e.type;
       const hp = document.createElement('div');
       hp.className = 'hp';
-      hp.style.width = `${Math.round((e.hp / e.maxHp) * 100)}%`;
-      const ratio = e.hp / e.maxHp;
-      hp.style.background = ratio > 0.66 ? '#5ad05a' : ratio > 0.33 ? '#e0c040' : '#e05040';
+      hp.dataset.hpFor = String(e.id);
       chip.appendChild(hp);
       wrap.appendChild(chip);
     }
@@ -508,15 +557,15 @@ export class Hud {
       }
     }
 
-    // train queue chips with cancel
+    // train queue chips with cancel; progress text is patched per-frame
     b.trainQueue.forEach((item, i) => {
       const u = UNITS[item.unit];
-      const pct = i === 0 ? `${Math.round((1 - item.remaining / item.total) * 100)}%` : '…';
-      this.cmdButton(UNIT_ICONS[item.unit] ?? '🧍', `${u.name} ${pct}`, null, true,
+      const btn = this.cmdButton(UNIT_ICONS[item.unit] ?? '🧍', u.name, null, true,
         () => this.cb.onCancelTrain(b.id, i), '✕', {
           key: `queue:${i}`,
           html: `<h4>${UNIT_ICONS[item.unit] ?? '🧍'} ${u.name} — in queue</h4><div class="tip-desc">Click to cancel and refund the full cost (${costText(u.cost)}).</div>`,
         });
+      btn.dataset.queueProg = `${b.id}:${i}`;
     });
   }
 }
