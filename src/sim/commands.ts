@@ -69,13 +69,17 @@ export function canPlaceBuilding(state: GameState, type: string, tx: number, ty:
   return true;
 }
 
-/** Tree tiles within `radius` of (tx,ty), sorted nearest-first (deterministic). */
+/**
+ * Tree tiles within `radius` of (tx,ty), sorted nearest-first (deterministic).
+ * Only trees on the edge of a forest (with a walkable neighbor) qualify —
+ * fanning a worker onto an interior tile would strand it.
+ */
 function treesAround(state: GameState, tx: number, ty: number, radius: number): { x: number; y: number }[] {
   const map = state.map;
   const out: { x: number; y: number; d: number }[] = [];
   for (let y = Math.max(0, ty - radius); y <= Math.min(map.height - 1, ty + radius); y++) {
     for (let x = Math.max(0, tx - radius); x <= Math.min(map.width - 1, tx + radius); x++) {
-      if (map.trees[y * map.width + x] > 0) {
+      if (map.trees[y * map.width + x] > 0 && treeHasOpenNeighbor(state, x, y)) {
         out.push({ x, y, d: (x - tx) ** 2 + (y - ty) ** 2 });
       }
     }
@@ -84,11 +88,25 @@ function treesAround(state: GameState, tx: number, ty: number, radius: number): 
   return out.map(({ x, y }) => ({ x, y }));
 }
 
+function treeHasOpenNeighbor(state: GameState, x: number, y: number): boolean {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      if (isWalkable(state.map, x + dx, y + dy)) return true;
+    }
+  }
+  return false;
+}
+
 function ownedUnits(state: GameState, player: PlayerId, ids: EntityId[]): Entity[] {
   const out: Entity[] = [];
   for (const id of ids) {
     const e = state.entities.get(id);
-    if (e && e.owner === player && !e.isBuilding && e.insideMine <= 0) out.push(e);
+    if (e && e.owner === player && !e.isBuilding && e.insideMine <= 0) {
+      // an explicit order supersedes any "return to work" memory
+      e.resumeOrder = null;
+      out.push(e);
+    }
   }
   return out;
 }

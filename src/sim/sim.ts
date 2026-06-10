@@ -17,6 +17,8 @@ const GOLD_PER_TRIP = 10;
 const WOOD_PER_TRIP = 10;
 const MINE_TICKS = secondsToTicks(1.2);
 const CHOP_TICKS_PER_WOOD = secondsToTicks(0.45);
+/** must exceed √2 so a tree can be chopped from a diagonal neighbor tile */
+const CHOP_RANGE = 1.6;
 const BUILD_RATE_PER_WORKER = 1; // construction ticks advanced per worker per tick
 const SEPARATION_RADIUS = 0.6;
 const SEPARATION_PUSH = 0.08;
@@ -164,7 +166,7 @@ function stepUnit(state: GameState, events: EventBus, e: Entity): void {
     case 'attack': {
       const target = e.order.target !== undefined ? state.entities.get(e.order.target) : undefined;
       if (!target) {
-        e.order = { kind: 'idle' };
+        standDown(state, e);
         break;
       }
       attackTarget(state, events, e, target, null);
@@ -233,12 +235,16 @@ function attackTarget(
       e.striking = true;
       events.emit({ kind: 'attackSwing', attacker: e.id, ranged: def.range > 2, x: e.x, y: e.y });
       if (!state.entities.has(target.id)) {
-        // target died: resume attack-move or go idle
-        e.order = resume ?? { kind: 'idle' };
-        if (resume && resume.x !== undefined) repath(state, e, resume.x, resume.y!);
+        // target died: resume attack-move, return to work, or go idle
+        if (resume) {
+          e.order = resume;
+          if (resume.x !== undefined) repath(state, e, resume.x, resume.y!);
+        } else {
+          standDown(state, e);
+        }
       }
     }
-    if (e.order.kind !== 'attack' && resume === null) {
+    if (state.entities.has(target.id) && e.order.kind !== 'attack' && resume === null) {
       e.order = { kind: 'attack', target: target.id };
     } else if (e.order.kind === 'attackMove') {
       // keep attackMove order but remember we're engaged — nothing to do
@@ -275,6 +281,12 @@ function dealDamage(state: GameState, events: EventBus, attacker: Entity, target
   if (!target.isBuilding && (target.order.kind === 'harvest' || target.order.kind === 'deliver')) {
     const tdef = unitDef(target.type);
     if (tdef.isWorker && !attacker.isBuilding) {
+      // remember the job so the worker returns to it after the fight;
+      // an interrupted delivery resumes as a fresh harvest (carry is dropped)
+      const job = target.order;
+      target.resumeOrder = job.kind === 'deliver'
+        ? { kind: 'harvest', target: job.target, tx: job.tx, ty: job.ty, gatherTicks: 0 }
+        : job;
       target.order = { kind: 'attack', target: attacker.id };
       target.carryType = null;
       target.carryAmount = 0;
@@ -283,6 +295,27 @@ function dealDamage(state: GameState, events: EventBus, attacker: Entity, target
 
   if (target.hp <= 0) {
     killEntity(state, events, target);
+  }
+}
+
+/** Fight's over: return to the interrupted job if there was one, else idle. */
+function standDown(state: GameState, e: Entity): void {
+  const job = e.resumeOrder;
+  e.resumeOrder = null;
+  if (!job) {
+    e.order = { kind: 'idle' };
+    return;
+  }
+  e.order = job;
+  if (job.kind === 'harvest') {
+    if (job.target !== undefined) {
+      const mine = state.entities.get(job.target);
+      if (mine) repath(state, e, mine.x, mine.y, mine.id);
+      else e.order = { kind: 'idle' };
+    } else if (job.tx !== undefined && job.ty !== undefined) {
+      // stepHarvest self-heals if the tree fell in the meantime
+      repath(state, e, job.tx + 0.5, job.ty + 0.5);
+    }
   }
 }
 
@@ -368,7 +401,7 @@ function stepHarvest(state: GameState, events: EventBus, e: Entity): void {
   }
 
   const treeCenter = { x: tx + 0.5, y: ty + 0.5 };
-  if (distance(e, treeCenter) <= 1.2) {
+  if (distance(e, treeCenter) <= CHOP_RANGE) {
     e.path = null;
     e.facing = Math.atan2(treeCenter.y - e.y, treeCenter.x - e.x);
     e.order.gatherTicks = (e.order.gatherTicks ?? 0) + 1;
@@ -390,7 +423,16 @@ function stepHarvest(state: GameState, events: EventBus, e: Entity): void {
 
   if (!advanceAlongPath(state, e, def.speed)) {
     repath(state, e, treeCenter.x, treeCenter.y);
-    if (!e.path || e.path.length === 0) e.order = { kind: 'idle' };
+    if (!e.path || e.path.length === 0) {
+      // this tree is unreachable from here — pick a different one
+      const next = findNextTree(state, e, tx, ty, tx, ty);
+      if (next) {
+        e.order = { kind: 'harvest', tx: next.x, ty: next.y, gatherTicks: 0 };
+        repath(state, e, next.x + 0.5, next.y + 0.5);
+      } else {
+        e.order = { kind: 'idle' };
+      }
+    }
   }
 }
 
@@ -399,18 +441,23 @@ function stepHarvest(state: GameState, events: EventBus, e: Entity): void {
  * the old tile, but fall back to the nearest tree anywhere on the map so
  * lumber lines keep running instead of going idle.
  */
-function findNextTree(state: GameState, e: Entity, tx: number, ty: number): { x: number; y: number } | null {
-  return nearestTree(state, tx, ty, 6)
-    ?? nearestTree(state, Math.floor(e.x), Math.floor(e.y), Math.max(state.map.width, state.map.height));
+function findNextTree(
+  state: GameState, e: Entity, tx: number, ty: number, exX = -1, exY = -1,
+): { x: number; y: number } | null {
+  return nearestTree(state, tx, ty, 6, exX, exY)
+    ?? nearestTree(state, Math.floor(e.x), Math.floor(e.y), Math.max(state.map.width, state.map.height), exX, exY);
 }
 
-function nearestTree(state: GameState, tx: number, ty: number, radius: number): { x: number; y: number } | null {
+function nearestTree(
+  state: GameState, tx: number, ty: number, radius: number, exX = -1, exY = -1,
+): { x: number; y: number } | null {
   const map = state.map;
   let best: { x: number; y: number } | null = null;
   let bestD = Infinity;
   for (let y = Math.max(0, ty - radius); y <= Math.min(map.height - 1, ty + radius); y++) {
     for (let x = Math.max(0, tx - radius); x <= Math.min(map.width - 1, tx + radius); x++) {
       if (map.trees[y * map.width + x] === 0) continue;
+      if (x === exX && y === exY) continue;
       // only target trees with a walkable neighbor (reachable edge of forest)
       if (!hasWalkableNeighbor(state, x, y)) continue;
       const d = (x - tx) ** 2 + (y - ty) ** 2;

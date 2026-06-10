@@ -63,6 +63,8 @@ export interface Entity {
 
   // --- units ---
   order: Order;
+  /** job to return to after retaliating (workers interrupted mid-harvest) */
+  resumeOrder: Order | null;
   path: { x: number; y: number }[] | null;
   pathIndex: number;
   /** attack cooldown in ticks */
@@ -149,6 +151,7 @@ function baseEntity(state: GameState, owner: PlayerId, type: string, x: number, 
     x, y, px: x, py: y,
     hp: 1, maxHp: 1,
     order: { kind: 'idle' },
+    resumeOrder: null,
     path: null, pathIndex: 0,
     cooldown: 0,
     carryType: null, carryAmount: 0,

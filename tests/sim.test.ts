@@ -232,6 +232,45 @@ describe('economy', () => {
     expect(state.players[0].wood).toBeGreaterThanOrEqual(10);
     expect(map.trees[far.y * map.width + far.x]).toBeLessThan(100);
   });
+
+  it('chops a tree whose only open neighbor is diagonal', () => {
+    const { state, events } = createMatch(testConfig());
+    const map = state.map;
+    const w0 = workers(state, 0)[0];
+    map.trees.fill(0);
+    // place the tree a few tiles from the worker, water on all 4 orthogonals
+    const tx = Math.floor(w0.x) + 4, ty = Math.floor(w0.y);
+    map.trees[ty * map.width + tx] = 50;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      map.terrain[(ty + dy) * map.width + (tx + dx)] = T_WATER;
+    }
+    const cmds = new Map<number, Command[]>([
+      [0, [{ kind: 'harvest', player: 0, units: [w0.id], tx, ty } as Command]],
+    ]);
+    run(state, events, TICKS_PER_SECOND * 45, cmds);
+    expect(state.players[0].wood).toBeGreaterThan(0);
+  });
+
+  it('a worker returns to chopping after fighting off an attacker', () => {
+    const { state, events } = createMatch(testConfig());
+    const map = state.map;
+    const w0 = workers(state, 0)[0];
+    map.trees.fill(0);
+    const tx = Math.floor(w0.x) + 3, ty = Math.floor(w0.y);
+    map.trees[ty * map.width + tx] = 500;
+    // a nearly-dead enemy worker pesters ours: one retaliation hit kills it
+    const pest = spawnUnit(state, 1, 'peon', w0.x + 1, w0.y);
+    pest.hp = 1;
+    const cmds = new Map<number, Command[]>([
+      [0, [{ kind: 'harvest', player: 0, units: [w0.id], tx, ty } as Command]],
+      [30, [{ kind: 'attack', player: 1, units: [pest.id], target: w0.id } as Command]],
+    ]);
+    run(state, events, TICKS_PER_SECOND * 60, cmds);
+    expect(state.entities.has(pest.id)).toBe(false); // pest died
+    expect(state.entities.has(w0.id)).toBe(true);
+    expect(['harvest', 'deliver']).toContain(w0.order.kind); // back to work
+    expect(state.players[0].wood).toBeGreaterThan(0);
+  });
 });
 
 describe('training & construction', () => {
@@ -348,7 +387,7 @@ describe('training & construction', () => {
     const evs = run(state, events, TICKS_PER_SECOND * 50, cmds);
     expect(hall.level).toBe(2);
     expect(evs.some((e) => e.kind === 'upgradeComplete')).toBe(true);
-    expect(hall.maxHp).toBe(1600);
+    expect(hall.maxHp).toBe(1700);
   });
 });
 

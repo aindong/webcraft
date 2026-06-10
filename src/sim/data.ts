@@ -104,28 +104,28 @@ export const UNITS: Record<string, UnitDef> = {
     id: 'peasant', name: 'Peasant',
     desc: 'Gathers gold and lumber and constructs buildings. Keeps chopping nearby forests until told otherwise.',
     cost: { gold: 75, wood: 0 }, food: 1,
-    hp: 40, speed: 2.2, damage: 4, range: 1.2, attackPeriod: 1.6,
+    hp: 45, speed: 2.2, damage: 5, range: 1.2, attackPeriod: 1.6,
     aggroRange: 0, trainTime: 12, sight: 5, isWorker: true, requiresLevel: 1, scale: 0.85,
   },
   footman: {
     id: 'footman', name: 'Footman',
     desc: 'Sturdy front-line melee soldier — the backbone of any army.',
     cost: { gold: 135, wood: 0 }, food: 2,
-    hp: 90, speed: 2.4, damage: 9, range: 1.2, attackPeriod: 1.2,
+    hp: 100, speed: 2.4, damage: 10, range: 1.2, attackPeriod: 1.2,
     aggroRange: 5, trainTime: 18, sight: 6, isWorker: false, requiresLevel: 1, scale: 1,
   },
   archer: {
     id: 'archer', name: 'Archer',
     desc: 'Fragile ranged attacker. Deadly behind a line of footmen.',
     cost: { gold: 110, wood: 50 }, food: 2,
-    hp: 55, speed: 2.5, damage: 11, range: 5, attackPeriod: 1.5,
+    hp: 60, speed: 2.5, damage: 12, range: 5, attackPeriod: 1.5,
     aggroRange: 6, trainTime: 20, sight: 7, isWorker: false, requiresLevel: 2, scale: 0.95,
   },
   knight: {
     id: 'knight', name: 'Knight',
     desc: 'Fast, heavily armored cavalry that excels at breaking enemy lines.',
     cost: { gold: 220, wood: 40 }, food: 3,
-    hp: 160, speed: 3.2, damage: 16, range: 1.3, attackPeriod: 1.3,
+    hp: 160, speed: 3.2, damage: 18, range: 1.3, attackPeriod: 1.3,
     aggroRange: 5, trainTime: 28, sight: 6, isWorker: false, requiresLevel: 3, scale: 1.15,
   },
 
@@ -141,7 +141,7 @@ export const UNITS: Record<string, UnitDef> = {
     id: 'grunt', name: 'Grunt',
     desc: 'Tough melee bruiser. Hits hard and soaks damage.',
     cost: { gold: 140, wood: 0 }, food: 2,
-    hp: 100, speed: 2.3, damage: 10, range: 1.2, attackPeriod: 1.3,
+    hp: 110, speed: 2.3, damage: 10, range: 1.2, attackPeriod: 1.3,
     aggroRange: 5, trainTime: 18, sight: 6, isWorker: false, requiresLevel: 1, scale: 1.05,
   },
   spearthrower: {
@@ -174,9 +174,9 @@ export const BUILDINGS: Record<string, BuildingDef> = {
     cost: { gold: 400, wood: 250 }, size: 3, buildTime: 60, sight: 8,
     isTownHall: true, trains: ['peasant'],
     levels: [
-      { name: 'Town Hall', cost: { gold: 0, wood: 0 }, upgradeTime: 0, hp: 1100, providesFood: 5, ...NO_ATTACK },
-      { name: 'Keep', cost: { gold: 500, wood: 300 }, upgradeTime: 45, hp: 1600, providesFood: 8, ...NO_ATTACK },
-      { name: 'Castle', cost: { gold: 800, wood: 400 }, upgradeTime: 60, hp: 2200, providesFood: 12, ...NO_ATTACK },
+      { name: 'Town Hall', cost: { gold: 0, wood: 0 }, upgradeTime: 0, hp: 1200, providesFood: 5, ...NO_ATTACK },
+      { name: 'Keep', cost: { gold: 500, wood: 300 }, upgradeTime: 45, hp: 1700, providesFood: 8, ...NO_ATTACK },
+      { name: 'Castle', cost: { gold: 800, wood: 400 }, upgradeTime: 60, hp: 2400, providesFood: 12, ...NO_ATTACK },
     ],
   },
   house: {
@@ -185,8 +185,8 @@ export const BUILDINGS: Record<string, BuildingDef> = {
     cost: { gold: 80, wood: 30 }, size: 2, buildTime: 18, sight: 4,
     isTownHall: false, trains: [],
     levels: [
-      { name: 'House', cost: { gold: 0, wood: 0 }, upgradeTime: 0, hp: 250, providesFood: 4, ...NO_ATTACK },
-      { name: 'Manor', cost: { gold: 100, wood: 60 }, upgradeTime: 20, hp: 400, providesFood: 8, ...NO_ATTACK },
+      { name: 'House', cost: { gold: 0, wood: 0 }, upgradeTime: 0, hp: 270, providesFood: 4, ...NO_ATTACK },
+      { name: 'Manor', cost: { gold: 100, wood: 60 }, upgradeTime: 20, hp: 430, providesFood: 8, ...NO_ATTACK },
     ],
   },
   barracks: {
@@ -195,9 +195,9 @@ export const BUILDINGS: Record<string, BuildingDef> = {
     cost: { gold: 180, wood: 70 }, size: 3, buildTime: 35, sight: 5,
     isTownHall: false, trains: ['footman', 'archer', 'knight'],
     levels: [
-      { name: 'Barracks', cost: { gold: 0, wood: 0 }, upgradeTime: 0, hp: 600, providesFood: 0, ...NO_ATTACK },
-      { name: 'Barracks II', cost: { gold: 200, wood: 100 }, upgradeTime: 30, hp: 800, providesFood: 0, ...NO_ATTACK },
-      { name: 'Barracks III', cost: { gold: 350, wood: 150 }, upgradeTime: 40, hp: 1000, providesFood: 0, ...NO_ATTACK },
+      { name: 'Barracks', cost: { gold: 0, wood: 0 }, upgradeTime: 0, hp: 650, providesFood: 0, ...NO_ATTACK },
+      { name: 'Barracks II', cost: { gold: 200, wood: 100 }, upgradeTime: 30, hp: 850, providesFood: 0, ...NO_ATTACK },
+      { name: 'Barracks III', cost: { gold: 350, wood: 150 }, upgradeTime: 40, hp: 1050, providesFood: 0, ...NO_ATTACK },
     ],
   },
   tower: {
@@ -206,8 +206,8 @@ export const BUILDINGS: Record<string, BuildingDef> = {
     cost: { gold: 120, wood: 80 }, size: 2, buildTime: 30, sight: 8,
     isTownHall: false, trains: [],
     levels: [
-      { name: 'Watch Tower', cost: { gold: 0, wood: 0 }, upgradeTime: 0, hp: 350, providesFood: 0, damage: 12, range: 6, attackPeriod: 1.4 },
-      { name: 'Guard Tower', cost: { gold: 150, wood: 100 }, upgradeTime: 25, hp: 500, providesFood: 0, damage: 18, range: 7, attackPeriod: 1.2 },
+      { name: 'Watch Tower', cost: { gold: 0, wood: 0 }, upgradeTime: 0, hp: 380, providesFood: 0, damage: 13, range: 6, attackPeriod: 1.4 },
+      { name: 'Guard Tower', cost: { gold: 150, wood: 100 }, upgradeTime: 25, hp: 520, providesFood: 0, damage: 19, range: 7, attackPeriod: 1.2 },
     ],
   },
 
