@@ -5,15 +5,15 @@
  */
 import { buildingDef, unitDef } from '../sim/data';
 import { Entity, GameState, T_DIRT, T_WATER } from '../sim/state';
-import { FRAME_ATTACK, FRAME_IDLE, FRAME_WALK_A, FRAME_WALK_B, GameAssets } from './assets';
+import { ATTACK_FRAMES, FRAME_IDLE, GameAssets, WALK_FRAMES } from './assets';
 import { Camera, TILE_H, TILE_W } from './camera';
 import { Fog } from './fog';
 import { SpriteAtlas } from './sprites';
 
-/** How long the attack frame stays up after a swing, ms. */
-const STRIKE_FRAME_MS = 320;
-/** Walk cycle frame duration, ms. */
-const WALK_FRAME_MS = 170;
+/** How long the attack animation plays after a swing, ms. */
+const STRIKE_FRAME_MS = 360;
+/** Walk cycle frame duration, ms (4-frame cycle → ~9 fps). */
+const WALK_FRAME_MS = 110;
 
 export interface FloatingText {
   x: number; y: number;
@@ -319,9 +319,12 @@ export class Renderer {
       let frame = FRAME_IDLE;
       const struck = this.strikeAt.get(e.id);
       if (struck !== undefined && now - struck < STRIKE_FRAME_MS) {
-        frame = FRAME_ATTACK;
+        // play windup → strike → follow-through across the strike window
+        const p = (now - struck) / STRIKE_FRAME_MS;
+        frame = ATTACK_FRAMES[Math.min(ATTACK_FRAMES.length - 1, Math.floor(p * ATTACK_FRAMES.length))];
       } else if (moving) {
-        frame = Math.floor(now / WALK_FRAME_MS) % 2 === 0 ? FRAME_WALK_A : FRAME_WALK_B;
+        // offset by entity id so a group doesn't march in lockstep
+        frame = WALK_FRAMES[(Math.floor(now / WALK_FRAME_MS) + e.id) % WALK_FRAMES.length];
       }
       img = sheet[frame];
     } else {
@@ -337,13 +340,11 @@ export class Renderer {
 
     const size = tw * 0.62 * def.scale;
     const h = (img.height / img.width) * size;
-    // strike lunge + walk bob (AI sprites have no walk frames, so bob instead)
+    // strike lunge (walk motion comes from the real cycle frames now)
     let ox = 0, oy = 0;
     if (e.striking) {
       ox = Math.cos(e.facing) * 4 * camera.zoom;
       oy = Math.sin(e.facing) * 2 * camera.zoom;
-    } else if (aiImg && moving) {
-      oy = Math.abs(Math.sin(performance.now() / 110)) * -2.2 * camera.zoom;
     }
 
     // team-color ring under AI sprites (painted art can't be tinted per player)
@@ -356,11 +357,14 @@ export class Renderer {
       ctx.globalAlpha = fogVal === 1 ? 0.6 : 1;
     }
 
-    // mirror sprite when facing left
-    const faceLeft = Math.cos(e.facing) < -0.1;
+    // Mirror to match movement direction. Painted sheets are drawn facing
+    // LEFT, procedural sprites face RIGHT — flip on opposite sides.
+    const facingRight = Math.cos(e.facing) > 0.1;
+    const facingLeft = Math.cos(e.facing) < -0.1;
+    const flip = sheet ? facingRight : facingLeft;
     ctx.save();
     ctx.translate(s.x + ox, s.y + oy + th * 0.3);
-    if (faceLeft) ctx.scale(-1, 1);
+    if (flip) ctx.scale(-1, 1);
     ctx.drawImage(img, -size / 2, -h, size, h);
     ctx.restore();
 

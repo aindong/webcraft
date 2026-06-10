@@ -3,12 +3,12 @@
  *
  * Two kinds:
  *  - statics:  `<type>.png` — buildings, tree, goldmine (single image)
- *  - sheets:   `<type>_sheet.png` — units, a 2x2 grid of poses:
- *              [top-left]=idle  [top-right]=walk A
- *              [bottom-left]=walk B  [bottom-right]=attack
+ *  - sheets:   `<type>_sheet.png` — units, a 4-column × 2-row grid:
+ *              row 1: 4-frame walk cycle
+ *              row 2: idle, attack windup, attack strike, attack follow-through
  *
- * Sheets are sliced into 4 frames at load. All frames of a sheet are cropped
- * with ONE shared bounding box (union of the four), so the character doesn't
+ * Sheets are sliced into 8 frames at load. All frames of a sheet are cropped
+ * with ONE shared bounding box (union of all cells), so the character doesn't
  * jitter when frames swap during animation.
  *
  * Anything missing falls back to the procedurally drawn sprites — the game
@@ -26,11 +26,12 @@ export const UNIT_SHEET_NAMES = [
   'peon', 'grunt', 'spearthrower', 'raider',
 ] as const;
 
-/** Frame indices within a unit sheet. */
-export const FRAME_IDLE = 0;
-export const FRAME_WALK_A = 1;
-export const FRAME_WALK_B = 2;
-export const FRAME_ATTACK = 3;
+/** Frame indices within a unit sheet (4×2 grid, row-major). */
+export const WALK_FRAMES = [0, 1, 2, 3];
+export const FRAME_IDLE = 4;
+export const ATTACK_FRAMES = [5, 6, 7];
+const SHEET_COLS = 4;
+const SHEET_ROWS = 2;
 
 export interface GameAssets {
   statics: Map<string, HTMLCanvasElement>;
@@ -94,18 +95,20 @@ function trimToContent(img: HTMLImageElement): HTMLCanvasElement | null {
 }
 
 /**
- * Slice a 2x2 sheet into 4 aligned frames. Each cell's bounds are computed
- * relative to its own cell, then unioned, so every frame is cropped
+ * Slice a grid sheet into aligned frames (row-major). Each cell's bounds are
+ * computed relative to its own cell, then unioned, so every frame is cropped
  * identically and the feet stay planted across frames.
  */
 function sliceSheet(img: HTMLImageElement): HTMLCanvasElement[] | null {
   const px = readPixels(img);
   if (!px) return null;
-  const cw = Math.floor(px.w / 2), ch = Math.floor(px.h / 2);
-  const cells = [
-    { x: 0, y: 0 }, { x: cw, y: 0 },
-    { x: 0, y: ch }, { x: cw, y: ch },
-  ];
+  const cw = Math.floor(px.w / SHEET_COLS), ch = Math.floor(px.h / SHEET_ROWS);
+  const cells: { x: number; y: number }[] = [];
+  for (let r = 0; r < SHEET_ROWS; r++) {
+    for (let c = 0; c < SHEET_COLS; c++) {
+      cells.push({ x: c * cw, y: r * ch });
+    }
+  }
 
   // union of per-cell bounds, in cell-relative coords
   let u: Box | null = null;
@@ -168,7 +171,7 @@ export async function loadGameAssets(): Promise<GameAssets> {
       const single = await loadImage(`${base}${name}.png`);
       if (single) {
         const trimmed = trimToContent(single);
-        if (trimmed) sheets.set(name, [trimmed, trimmed, trimmed, trimmed]);
+        if (trimmed) sheets.set(name, new Array(SHEET_COLS * SHEET_ROWS).fill(trimmed));
       }
     }),
   ]);

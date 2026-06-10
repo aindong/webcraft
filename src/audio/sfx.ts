@@ -21,6 +21,16 @@ export function setSfxMuted(m: boolean): void {
   muted = m;
 }
 
+/**
+ * Browsers gate audio behind a user gesture. Call this from the first
+ * pointer/key handler to create + resume the context while the gesture is
+ * still "live", so every later sound plays without restriction.
+ */
+export function unlockAudio(): void {
+  const a = ac();
+  if (a && a.state === 'suspended') void a.resume();
+}
+
 export function isSfxMuted(): boolean {
   return muted;
 }

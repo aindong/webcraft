@@ -16,6 +16,7 @@ export interface HudCallbacks {
   onAttackMoveMode(): void;
   onToggleSfx(): boolean;
   onToggleVoice(): boolean;
+  onToggleMusic(): boolean;
   onQuit(): void;
 }
 
@@ -141,6 +142,7 @@ export class Hud {
         <button class="hud-btn" id="btn-help">Help (H)</button>
         <button class="hud-btn" id="btn-sfx">🔊 SFX</button>
         <button class="hud-btn" id="btn-voice">🗣️ Voice</button>
+        <button class="hud-btn" id="btn-music">🎵 Music</button>
         <button class="hud-btn" id="btn-quit">Surrender</button>
       </div>
       <div id="alerts"></div>
@@ -183,6 +185,11 @@ export class Hud {
     this.voiceBtn.addEventListener('click', () => {
       const m = cb.onToggleVoice();
       this.voiceBtn.textContent = m ? '🔇 Voice' : '🗣️ Voice';
+    });
+    const musicBtn = this.root.querySelector<HTMLButtonElement>('#btn-music')!;
+    musicBtn.addEventListener('click', () => {
+      const m = cb.onToggleMusic();
+      musicBtn.textContent = m ? '🔇 Music' : '🎵 Music';
     });
   }
 

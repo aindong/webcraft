@@ -3,7 +3,8 @@
  * sim events to audio/visual feedback. The sim advances on a fixed timestep;
  * rendering interpolates between ticks at display refresh rate.
  */
-import { sfx, setSfxMuted, isSfxMuted } from './audio/sfx';
+import { sfx, setSfxMuted, isSfxMuted, unlockAudio } from './audio/sfx';
+import { isMusicMuted, setMusicMuted, startMusic } from './audio/music';
 import { initVoices, isVoiceMuted, setVoiceMuted, speak } from './audio/voice';
 import { SimEvent } from './core/events';
 import { aiThink, resetAiMemory } from './sim/ai';
@@ -83,6 +84,7 @@ export class Game {
       onAttackMoveMode: () => { this.attackMoveArmed = true; },
       onToggleSfx: () => { setSfxMuted(!isSfxMuted()); return isSfxMuted(); },
       onToggleVoice: () => { setVoiceMuted(!isVoiceMuted()); return isVoiceMuted(); },
+      onToggleMusic: () => { setMusicMuted(!isMusicMuted()); return isMusicMuted(); },
       onQuit: () => this.surrender(),
     });
     this.minimap = new Minimap(this.hud.minimapCanvas, 150);
@@ -212,6 +214,20 @@ export class Game {
   private bindInput(): void {
     this.on(window, 'resize', () => this.resize());
     this.on(window, 'contextmenu', (e) => e.preventDefault());
+
+    // first gesture unlocks the audio context and starts the music loop
+    const unlock = () => {
+      unlockAudio();
+      startMusic();
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    this.disposers.push(() => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    });
 
     this.on(this.canvas, 'mousemove', (e) => {
       this.mouseX = e.clientX;

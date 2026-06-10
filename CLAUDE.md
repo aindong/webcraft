@@ -15,7 +15,7 @@ There is no lint setup; `tsc --noEmit` (strict, noUnusedLocals) is the gate.
 
 ## What this is
 
-A Warcraft-style isometric RTS playable in the browser. Single-player vs AI today, but the core is deliberately structured for lockstep multiplayer later. No runtime npm dependencies — rendering is raw Canvas 2D, SFX are Web Audio synth patches, unit voices are the Web Speech API.
+A Warcraft-style isometric RTS playable in the browser. Single-player vs AI today, but the core is deliberately structured for lockstep multiplayer later. No runtime npm dependencies — rendering is raw Canvas 2D, SFX are Web Audio synth patches, unit voices are the Web Speech API, and background music is a generative Web Audio loop (`audio/music.ts`). Browsers gate audio behind a user gesture: `game.ts` unlocks the AudioContext and starts music on the first pointerdown/keydown — don't remove that handler.
 
 ## Architecture: the determinism contract
 
@@ -45,7 +45,7 @@ Races, units, buildings (costs, HP, train lists, upgrade levels, voice lines) al
 `render/sprites.ts` procedurally bakes every sprite to offscreen canvases — this is the guaranteed fallback. `render/assets.ts` loads AI-painted PNGs from `public/assets/sprites/`:
 
 - **Statics** (`<type>.png`): buildings, tree, goldmine — auto-cropped to opaque bounds at load.
-- **Unit sheets** (`<type>_sheet.png`): a 2×2 grid of poses — TL idle, TR walk A, BL walk B, BR attack. `sliceSheet()` cuts the quadrants and crops all four with one *union* bounding box so frames don't jitter. The renderer alternates walk frames while moving (`WALK_FRAME_MS`) and holds the attack frame for `STRIKE_FRAME_MS` after a swing (tracked render-side in `Renderer.strikeAt`, since `e.striking` is only true on the swing tick).
+- **Unit sheets** (`<type>_sheet.png`): a 4-column × 2-row grid — row 1 is a 4-frame walk cycle, row 2 is idle + attack windup/strike/follow-through. `sliceSheet()` cuts the cells and crops all eight with one *union* bounding box so frames don't jitter. The renderer cycles walk frames while moving (`WALK_FRAME_MS`, offset by entity id so groups don't march in lockstep) and plays the 3-frame attack across `STRIKE_FRAME_MS` after a swing (tracked render-side in `Renderer.strikeAt`, since `e.striking` is only true on the swing tick). **Painted sheets face LEFT, procedural sprites face RIGHT** — the mirror logic in `drawEntity` flips on opposite conditions; getting this wrong makes units moonwalk.
 
 **Any new entity type must work with the procedural path alone** — the game must run with `public/assets/sprites/` deleted.
 
