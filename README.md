@@ -1,5 +1,7 @@
 # ⚔️ Webcraft — Realm of War
 
+**Play it: https://webcraft-sage.vercel.app**
+
 A classic-style god-game / RTS city builder playable in the browser, in the
 spirit of the genre's golden age: gather gold and lumber, raise a town,
 train an army, and raze your enemy's base — complete with chirpy unit
