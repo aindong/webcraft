@@ -249,6 +249,23 @@ describe('training & construction', () => {
     expect(evs.some((e) => e.kind === 'trainComplete')).toBe(true);
   });
 
+  it('a rally point on a mine puts freshly trained workers to work', () => {
+    const { state, events } = createMatch(testConfig());
+    const hall = findOwn(state, 0, (e) => e.type === 'townhall');
+    const mine = [...state.entities.values()]
+      .filter((e) => e.type === 'goldmine')
+      .sort((a, b) => Math.hypot(a.x - hall.x, a.y - hall.y) - Math.hypot(b.x - hall.x, b.y - hall.y))[0];
+    // existing workers stay idle: any gold income must come from the new one
+    const cmds = new Map<number, Command[]>([
+      [0, [
+        { kind: 'setRally', player: 0, building: hall.id, x: mine.x, y: mine.y } as Command,
+        { kind: 'train', player: 0, building: hall.id, unit: 'peasant' } as Command,
+      ]],
+    ]);
+    const evs = run(state, events, TICKS_PER_SECOND * 60, cmds);
+    expect(evs.some((e) => e.kind === 'resourceDelivered' && e.resource === 'gold')).toBe(true);
+  });
+
   it('rejects training beyond the food cap', () => {
     const { state, events } = createMatch(testConfig());
     const hall = findOwn(state, 0, (e) => e.type === 'townhall');

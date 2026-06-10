@@ -5,7 +5,7 @@
  * Fully deterministic given (seed, command stream) — the lockstep contract.
  */
 import { EventBus } from '../core/events';
-import { applyCommand, Command } from './commands';
+import { applyCommand, Command, smartCommand } from './commands';
 import { buildingDef, unitDef } from './data';
 import { findPath, walkableIgnoring } from './pathfinding';
 import {
@@ -83,11 +83,11 @@ function stepBuilding(state: GameState, events: EventBus, b: Entity): void {
       const spot = findSpawnSpot(state, b);
       const u = spawnUnit(state, b.owner, item.unit, spot.x, spot.y);
       events.emit({ kind: 'trainComplete', player: b.owner, entity: u.id, type: item.unit });
-      // send to rally point
+      // send to rally point — smart, like a right-click: a rally on a mine
+      // or tree puts workers straight to work, on a construction site they
+      // help build, on an enemy the unit attacks; otherwise just move
       if (b.rallyX >= 0) {
-        u.order = { kind: 'move', x: b.rallyX, y: b.rallyY };
-        u.path = findPath(state.map, u.x, u.y, b.rallyX, b.rallyY, walkableIgnoring(state.map, -999));
-        u.pathIndex = 0;
+        applyCommand(state, events, smartCommand(state, b.owner, [u.id], b.rallyX, b.rallyY));
       }
     }
   }
